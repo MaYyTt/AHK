@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Presupuestos</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        table, th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        .total-output { font-weight: bold; margin-top: 20px; }
+        .form-group { margin-bottom: 20px; }
+        button { padding: 10px 20px; margin-top: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h1>Generador de Presupuestos</h1>
+
+    <div class="form-group">
+        <label for="client-name">Nombre del Cliente:</label>
+        <input type="text" id="client-name" placeholder="Nombre y Apellido" style="width: 100%; padding: 8px;">
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Cantidad</th>
+                <th>Producto</th>
+                <th>Precio Unitario</th>
+                <th>Precio Total</th>
+            </tr>
+        </thead>
+        <tbody id="product-list">
+            <!-- Product rows will be inserted dynamically -->
+        </tbody>
+    </table>
+
+    <button id="add-product">Añadir Producto</button>
+
+    <div class="form-group total-output">
+        <p>Subtotal: $<span id="subtotal">0.00</span></p>
+        <p>IVA (21%): $<span id="iva">0.00</span></p>
+        <p>Total: $<span id="total">0.00</span></p>
+        <p>Cuota Ahora 12 (sin interés): $<span id="ahora12">0.00</span></p>
+        <p>Cuota Ahora 18 (con 75% de interés): $<span id="ahora18">0.00</span></p>
+    </div>
+
+    <button id="print">Imprimir Presupuesto</button>
+    <button id="export-pdf">Exportar a PDF</button>
+
+    <!-- jsPDF library for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF AutoTable plugin -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const productList = document.getElementById('product-list');
+            const subtotalEl = document.getElementById('subtotal');
+            const ivaEl = document.getElementById('iva');
+            const totalEl = document.getElementById('total');
+            const ahora12El = document.getElementById('ahora12');
+            const ahora18El = document.getElementById('ahora18');
+            let productCount = 0;
+            
+            const products = [
+                { name: 'Producto 1', price: 100 },
+                { name: 'Producto 2', price: 200 },
+                { name: 'Producto 3', price: 300 },
+                { name: 'Producto 4', price: 400 },
+                { name: 'Producto 5', price: 500 },
+            ];
+
+            function updateTotals() {
+                let subtotal = 0;
+                const rows = productList.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const quantity = parseFloat(row.querySelector('.quantity').value) || 0;
+                    const unitPrice = parseFloat(row.querySelector('.unit-price').value) || 0;
+                    const totalPrice = quantity * unitPrice;
+                    subtotal += totalPrice;
+                    row.querySelector('.total-price').innerText = totalPrice.toFixed(2);
+                });
+
+                const iva = subtotal * 0.21;
+                const total = subtotal + iva;
+                const cuotaAhora12 = total / 12;
+                const cuotaAhora18 = (total * 1.75) / 18;
+
+                subtotalEl.innerText = subtotal.toFixed(2);
+                ivaEl.innerText = iva.toFixed(2);
+                totalEl.innerText = total.toFixed(2);
+                ahora12El.innerText = cuotaAhora12.toFixed(2);
+                ahora18El.innerText = cuotaAhora18.toFixed(2);
+            }
+
+            document.getElementById('add-product').addEventListener('click', () => {
+                if (productCount >= 5) return;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><input type="number" class="quantity" min="1" value="1" style="width: 100%;"></td>
+                    <td>
+                        <select class="product-select" style="width: 100%;">
+                            ${products.map(product => `<option value="${product.price}">${product.name}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td><input type="number" class="unit-price" min="0" value="0" style="width: 100%;"></td>
+                    <td>$<span class="total-price">0.00</span></td>
+                `;
+
+                productList.appendChild(row);
+                productCount++;
+
+                row.querySelector('.quantity').addEventListener('input', updateTotals);
+                row.querySelector('.unit-price').addEventListener('input', updateTotals);
+                row.querySelector('.product-select').addEventListener('change', function() {
+                    row.querySelector('.unit-price').value = this.value;
+                    updateTotals();
+                });
+
+                updateTotals();
+            });
+
+            // For Printing
+            document.getElementById('print').addEventListener('click', () => {
+                window.print();
+            });
+
+            // For Exporting to PDF with Grid
+            document.getElementById('export-pdf').addEventListener('click', () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                // Header
+                doc.setFontSize(14);
+                doc.text('Presupuesto', 10, 10);
+                doc.text('Cliente: ' + document.getElementById('client-name').value, 10, 20);
+
+                // Product table data
+                const data = [];
+                const rows = productList.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const quantity = row.querySelector('.quantity').value;
+                    const product = row.querySelector('.product-select').selectedOptions[0].text;
+                    const unitPrice = row.querySelector('.unit-price').value;
+                    const totalPrice = row.querySelector('.total-price').innerText;
+                    data.push([quantity, product, '$' + unitPrice, '$' + totalPrice]);
+                });
+
+                // Using autoTable to generate the grid
+                doc.autoTable({
+                    head: [['Cantidad', 'Producto', 'Precio Unitario', 'Precio Total']],
+                    body: data,
+                    startY: 30,
+                    theme: 'grid',  // Use grid theme for the table borders
+                });
+
+                // Totals
+                let finalY = doc.lastAutoTable.finalY + 10;  // Get the position where the table ends
+                doc.text('Subtotal: $' + subtotalEl.innerText, 10, finalY);
+                finalY += 10;
+                doc.text('IVA (21%): $' + ivaEl.innerText, 10, finalY);
+                finalY += 10;
+                doc.text('Total: $' + totalEl.innerText, 10, finalY);
+
+                // Payment details
+                finalY += 10;
+                doc.text('Pago en cuotas:', 10, finalY);
+                finalY += 10;
+                doc.text('Cuota Ahora 12 (sin interés): $' + ahora12El.innerText, 10, finalY);
+                finalY += 10;
+                doc.text('Cuota Ahora 18 (con 75% de interés): $' + ahora18El.innerText, 10, finalY);
+
+                // Save PDF
+                doc.save('presupuesto.pdf');
+            });
+        });
+    </script>
+</body>
+</html>
